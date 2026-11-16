@@ -652,7 +652,12 @@ class GeneratedMediaService {
     }
     if (source.isEmpty || source.contains('\u0000')) return null;
 
-    final uri = Uri.tryParse(source);
+    // Windows drive-letter paths (MEDIA:C:\...) must not be treated as a URI:
+    // Dart parses "C:" as scheme "c" and the non-https rejection below would
+    // drop every MEDIA: line a Windows host posts. Same exception as
+    // artifactReference in the Artefactos tab.
+    final windows = RegExp(r'^[A-Za-z]:[\\/]').hasMatch(source);
+    final uri = windows ? null : Uri.tryParse(source);
     final sourceKind = uri != null && uri.scheme.toLowerCase() == 'https'
         ? GeneratedMediaSourceKind.https
         : GeneratedMediaSourceKind.serverPath;
@@ -891,16 +896,25 @@ class GeneratedMediaService {
   }
 
   static bool _isSafeServerPath(String source) {
+    // Windows drive-letter paths are first-class on Windows hosts: the
+    // Dashboard serves them through files/download and artifactReference
+    // (Artefactos) already accepts them.
+    final windows = RegExp(r'^[A-Za-z]:[\\/]').hasMatch(source);
     if (source.length > 2048 ||
-        !source.startsWith('/') ||
+        (!windows && !source.startsWith('/')) ||
         source.startsWith('//') ||
-        source.contains('\\') ||
+        (!windows && source.contains('\\')) ||
         source.contains(RegExp(r'[\x00-\x1f\x7f]')) ||
         source.contains('?') ||
         source.contains('#')) {
       return false;
     }
-    for (final raw in source.split('/').skip(1)) {
+    final segments = windows
+        ? source.substring(2)
+            .split(RegExp(r'[\\/]+'))
+            .where((segment) => segment.isNotEmpty)
+        : source.split('/').skip(1);
+    for (final raw in segments) {
       if (raw.isEmpty || raw == '.' || raw == '..') return false;
       String decoded;
       try {

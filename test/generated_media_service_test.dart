@@ -222,6 +222,39 @@ void main() {
       }
     });
 
+    test('parses Windows drive-letter MEDIA paths as server paths', () {
+      for (final source in <String>[
+        r'C:\Users\Brick\AppData\Local\hermes\profiles\comfy-brick\cache\scratch\ph_rainy7_A_cleanref.png',
+        'C:/Users/Brick/AppData/Local/hermes/cache/images/render.png',
+      ]) {
+        final segments = GeneratedMediaService.parseSegments('MEDIA:$source');
+        final media = segments
+            .whereType<GeneratedMediaFileSegment>()
+            .single
+            .reference;
+        expect(media.kind, GeneratedMediaKind.image, reason: source);
+        expect(media.sourceKind, GeneratedMediaSourceKind.serverPath,
+            reason: source);
+        expect(media.source, source, reason: source);
+      }
+    });
+
+    test('rejects traversal and malformed Windows drive-letter paths', () {
+      for (final source in <String>[
+        r'C:\Users\Brick\..\secret.png',
+        r'C:\Users\Brick\%2e%2e\secret.png',
+        r'C:Users\Brick\secret.png',
+        r'C:\Users\Brick\secret.png?token=secret',
+      ]) {
+        final segments = GeneratedMediaService.parseSegments('MEDIA:$source');
+        expect(
+          segments.whereType<GeneratedMediaFileSegment>(),
+          isEmpty,
+          reason: source,
+        );
+      }
+    });
+
     test(
       'stripDirectives preserves prose and withholds paths and signed URLs',
       () {
